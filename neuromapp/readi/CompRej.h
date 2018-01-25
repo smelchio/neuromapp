@@ -158,7 +158,7 @@ public:
     // update the propensity relative to r-th reaction inside i-th tetrahedron
     void update_propensity(IntType r, IntType i, FloatType new_prop){
         assert(r>=0 && r<n_reacs_);
-        assert(i>=0 && r<n_tets_);
+        assert(i>=0 && i<n_tets_);
         assert(propensity_val(r, i)>=0.0);
         assert(new_prop>=0.0);
 

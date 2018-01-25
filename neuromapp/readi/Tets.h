@@ -137,6 +137,37 @@ public:
         return mol_occupancy_lastupdtime_[n_tets_*s + i];
     }
 
+    // access mu parameter for tau leaping of s-th species in i-th tetrahedron
+    inline FloatType& mu_tau_leaping(IntType s, IntType i) {
+        assert(s>=0 && s<n_species_);
+        assert(i>=0 && i<n_tets_);
+        return mu_TL[n_tets_*s + i];
+    }
+
+    // access sigma parameter for tau leaping of s-th species in i-th tetrahedron
+    inline FloatType& sigma_tau_leaping(IntType s, IntType i) {
+        assert(s>=0 && s<n_species_);
+        assert(i>=0 && i<n_tets_);
+        return sigma_TL[n_tets_*s + i];
+    }
+
+    // get estimated tau
+    inline FloatType tau_leaping() const {
+        bool foundOne = false;
+        FloatType toReturn;
+        for(IntType s =0;  s<n_species_; ++s)
+	    for(IntType i =0; i<n_tets_; ++i)
+               if (sigma_TL[n_tets_*s + i] > 0){
+                   double num = std::max(0.01*molecule_count(s, i), 1.);
+                   double tau = num*std::min(1./std::abs(mu_TL[n_tets_*s + i]), num/sigma_TL[n_tets_*s + i]);
+                   if (foundOne)
+                       toReturn = std::min(tau,toReturn);
+                   else {
+                       toReturn = tau;
+                       foundOne = true;
+                   }
+               }
+    }
 
     // compute max shape d_K, so that tau = D_max * d_K
     FloatType get_max_shape() {
@@ -191,6 +222,8 @@ public:
             mol_counts_.resize(n_tets_*n_species_);             // each tet knows how many mol of each species it contains
             mol_occupancy_counts_.resize(n_tets_*n_species_);
             mol_occupancy_lastupdtime_.resize(n_tets_*n_species_);
+            mu_TL.resize(n_tets_*n_species_);
+            sigma_TL.resize(n_tets_*n_species_);
             mol_counts_bucket_.resize(n_tets_);                 // bucket containing molecules received from diffusion
             std::getline(file_model, discard);                           // read \n
             std::getline(file_model, discard);                           // read description line
@@ -254,6 +287,12 @@ public:
         return;
     }
 
+    void clear_tau_leaping_parameters() {
+        std::fill(mu_TL.begin(), mu_TL.end(), 0);
+        std::fill(sigma_TL.begin(), sigma_TL.end(), 0);
+        return;
+    }
+
 
 private:
     IntType n_tets_;
@@ -268,6 +307,8 @@ private:
     std::vector<IntType> mol_counts_bucket_;
     std::vector<FloatType> mol_occupancy_counts_;
     std::vector<FloatType> mol_occupancy_lastupdtime_;
+    std::vector<FloatType> mu_TL;
+    std::vector<FloatType> sigma_TL;
 };
 
 }

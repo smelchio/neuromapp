@@ -130,11 +130,11 @@ public:
     }
 
 
-    // apply this reaction on a tetrahedron
-    inline void apply(IntType tet_idx, readi::Tets<IntType,FloatType>& tets) const {
+    // apply k times this reaction on a tetrahedron
+    inline void apply(IntType tet_idx, readi::Tets<IntType,FloatType>& tets, IntType k = 1) const {
         for(IntType i=0; i<upd_idxs_.size(); ++i) {
-            assert(tets.molecule_count(upd_idxs_[i], tet_idx) >= -upd_counts_[i]);
-            tets.molecule_count(upd_idxs_[i], tet_idx) += upd_counts_[i];
+            assert(tets.molecule_count(upd_idxs_[i], tet_idx) >= -upd_counts_[i]*k);        // an exception should be thrown ?
+            tets.molecule_count(upd_idxs_[i], tet_idx) += upd_counts_[i]*k;
         }
     }
 
@@ -155,6 +155,26 @@ public:
             }
         }
         return propensity;
+    }
+
+    // compute propensity of this reaction on a tetrahedron as well as criticity for tau-leaping
+    void updateCriticityAndPropensity(IntType tet_idx, readi::Tets<IntType,FloatType>& tets, FloatType &propensity, bool &criticity) const{
+        propensity = compute_c_mu(reaction_rate_, tets.volume(tet_idx));
+        criticity = false;
+        IntType n_c = 10;
+        for(int i=0; i<lhs_idxs_.size(); ++i) {
+            IntType X_i = tets.molecule_count(lhs_idxs_[i], tet_idx); // number of molecules of i-th species inside tet
+            for (int j=0; j<lhs_counts_[i]; ++j) {
+                propensity *= X_i -j;
+            }            
+            if (X_i + upd_counts_[i]*n_c < 0)
+                criticity = true;
+        }
+        if (!criticity)
+            for(int i=0; i<lhs_idxs_.size(); ++i) {
+                tets.mu_tau_leaping(lhs_idxs_[i], tet_idx) += upd_counts_[i]*propensity;
+                tets.sigma_tau_leaping(lhs_idxs_[i], tet_idx) += upd_counts_[i]*upd_counts_[i]*propensity;
+            }
     }
 
     friend class readi::Model<IntType,FloatType>; // why? because Model needs to access lhs and rhs

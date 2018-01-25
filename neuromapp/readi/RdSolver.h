@@ -63,7 +63,7 @@ public:
 
         // Initialize composition-rejection structure (holding and handling propensity values)
         comprej_.set_size(model_.get_n_reactions(), tets_.get_n_tets());
-        recompute_all_propensities();
+        //recompute_all_propensities();
 
     }
 
@@ -107,10 +107,11 @@ public:
     // run simulation for a tau period
     void run_period_ssa(FloatType tau) {
         printf("----  REAC-DIFF info ----------------------------------------\n");
-        printf("\t computed tau : %1.5e\n", tau);
-        auto vec_occurred_reacs = run_reactions(tau);
-        run_diffusions(tau);
-        zero_occupancies(vec_occurred_reacs);
+        tauLeapingPseudoCode(.01);
+        //printf("\t computed tau : %1.5e\n", tau);
+        //auto vec_occurred_reacs = run_reactions(.01);
+        //run_diffusions(tau);
+        //zero_occupancies(vec_occurred_reacs);
         printf("-------------------------------------------------------------\n");
 
     }
@@ -205,7 +206,70 @@ public:
         }
     }
 
-
+    void tauLeapingPseudoCode(FloatType t_final) {
+        FloatType t = 0;
+        int count_dt = 0;
+        int count_reac_TL = 0;
+        int count_reac_SSA = 0;
+        while (t < t_final) {
+            std::map<IntType, FloatType> propensity_values;
+            tets_.clear_tau_leaping_parameters();
+            FloatType a0 = 0;
+            for (IntType i=0; i<tets_.get_n_tets(); ++i)
+                for (IntType r=0; r<model_.get_n_reactions(); ++r) {
+                    FloatType new_prop_val;
+                    bool new_criticity;
+                    model_.preprocess_reaction(r, i, tets_, new_prop_val, new_criticity);
+                    comprej_.update_propensity(r, i, new_criticity ? new_prop_val : 0);
+                    //comprejAll.update_propensity(r, i, new_prop_val);
+                    a0 += new_prop_val;
+                    if(!new_criticity)
+                        propensity_values[i*model_.get_n_reactions() + r] = new_prop_val;
+                }
+            FloatType leapTime = tets_.tau_leaping();
+            if (leapTime < 10./a0) {
+                /*ToDo call Francesco's SSA  */ // how do we adapt this fixed number of steps in an "operator splitting" framework
+                recompute_all_propensities();
+                for (IntType j=0; j < 100; ++j) {
+                    FloatType u = (rand_engine_() - rand_engine_.min())/double(rand_engine_.max() - rand_engine_.min());
+                    FloatType dt = - std::log(u) / comprej_.get_total_propensity();
+                    IntType next_reac_i; // idx of tet where next reaction takes place
+                    IntType next_reac_r; // idx of next reaction that takes place
+                    comprej_.select_next_reaction(rand_engine_, &next_reac_r, &next_reac_i);
+                    model_.apply_reaction(next_reac_r, next_reac_i, tets_);
+                    recompute_propensities_after_reac(next_reac_r, next_reac_i);
+                    count_reac_SSA++;
+                    t += dt;
+                }
+                continue;
+            }
+            FloatType u = (rand_engine_() - rand_engine_.min())/double(rand_engine_.max() - rand_engine_.min());
+            FloatType timeSSA = - std::log(u) / std::max(comprej_.get_total_propensity(), 1e-12);
+            if (leapTime > timeSSA){
+                leapTime = timeSSA;
+                IntType next_reac_i; // idx of tet where next reaction takes place
+                IntType next_reac_r; // idx of next reaction that takes place
+                comprej_.select_next_reaction(rand_engine_, &next_reac_r, &next_reac_i);
+                model_.apply_reaction(next_reac_r, next_reac_i, tets_);
+                count_reac_SSA++;
+            }
+            for (auto &noncritical : propensity_values) {
+                auto div_result = std::div(noncritical.first, model_.get_n_reactions());
+                IntType i = div_result.quot;
+                IntType r = div_result.rem;
+                std::poisson_distribution<IntType> distribution(noncritical.second*leapTime);
+                IntType k_r = distribution(rand_engine_);
+                if (k_r > 0){
+                    model_.apply_reaction(r, i, tets_, k_r);
+                    count_reac_TL += k_r;
+                }
+            }
+            // ToDo: Catch exception in case a population has gone negative
+            t += leapTime;
+            count_dt++;
+        }
+        printf("%d + %d completed reactions in %d time steps", count_reac_TL, count_reac_SSA, count_dt);
+    }
 
 private:
     std::mt19937 rand_engine_;

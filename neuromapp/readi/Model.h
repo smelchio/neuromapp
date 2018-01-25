@@ -53,9 +53,9 @@ public:
         return species_names_[s];
     }
 
-    // applies r-th reaction to i-th tetrahedron
-    inline void apply_reaction(IntType r, IntType i, readi::Tets<IntType,FloatType>& tets) const {
-        reactions_[r].apply(i, tets);
+    // applies k times r-th reaction to i-th tetrahedron
+    inline void apply_reaction(IntType r, IntType i, readi::Tets<IntType,FloatType>& tets, IntType k = 1) const {
+        reactions_[r].apply(i, tets, k);
     }
 
 
@@ -64,6 +64,10 @@ public:
         return reactions_[r].compute_propensity(i, tets);
     }
 
+    // computes propensity and criticity of r-th reaction in i-th tetrahedron, then update mu and sigma parameters for tau-leaping
+    inline void preprocess_reaction(IntType r, IntType i, readi::Tets<IntType,FloatType>& tets, FloatType &propensity, bool &criticity) const {
+        return reactions_[r].updateCriticityAndPropensity(i, tets, propensity, criticity);
+    }
 
     // return max diffusion coefficient
     inline FloatType get_max_diff() const {
